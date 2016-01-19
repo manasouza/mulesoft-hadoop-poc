@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:hdfs="http://www.mulesoft.org/schema/mule/hdfs" xmlns:tracking="http://www.mulesoft.org/schema/mule/ee/tracking" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:spring="http://www.springframework.org/schema/beans" 
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-current.xsd
+http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/hdfs http://www.mulesoft.org/schema/mule/hdfs/current/mule-hdfs.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/mule/ee/tracking/current/mule-tracking-ee.xsd">
+    <hdfs:config name="HDFS__Configuration" nameNodeUri="hdfs://localhost:9000" username="manasses" doc:name="HDFS: Configuration"/>
+    <http:listener-config name="HTTP_Listener_Configuration" host="0.0.0.0" port="8081" doc:name="HTTP Listener Configuration"/>
+    <hdfs:config name="HDFS__Blumix_Configuration" nameNodeUri="hdfs://mn01.services.dal.bluemix.net:8020" username="hadoop" doc:name="HDFS: Configuration"/>
+    <hdfs:config name="HDFS__AbIn_Configuration" nameNodeUri="hdfs://abizbbbd01.azurehdinsight.net" username="adminclbd01" doc:name="HDFS: Configuration"/>
+    <flow name="SaveInfoFlow">
+        <http:listener config-ref="HTTP_Listener_Configuration" path="/save" doc:name="HTTP"/>
+        <logger message="Entering Save: #[message.inboundProperties['http.query.params']['info']]" level="INFO" doc:name="Log Flow Start"/>
+        <set-payload value="#[message.inboundProperties['http.query.params']['info']]" doc:name="Set Input Payload"/>
+        <hdfs:make-directories config-ref="HDFS__Configuration" path="#[payload]" doc:name="Save Directory"/>
+        <set-payload value="{&quot;success&quot;: true}" doc:name="Set Success Payload"/>
+        <catch-exception-strategy doc:name="Catch Exception Strategy">
+        	<set-payload value="{&quot;success&quot;: false}" doc:name="Set Error Payload"/>
+        </catch-exception-strategy>
+    </flow>
+    <flow name="GetInfoFlow">
+        <http:listener config-ref="HTTP_Listener_Configuration" path="/get" doc:name="HTTP"/>
+        <logger message="Entering Get: #[message.inboundProperties['http.query.params']['info']]" level="INFO" doc:name="Log Flow Start"/>
+        <set-payload value="#[message.inboundProperties['http.query.params']['info']]" doc:name="Set Input Payload"/>
+        <hdfs:get-metadata config-ref="HDFS__AbIn_Configuration" path="#[payload]" doc:name="Get Path Metadata"/>
+        <logger message="Path exist = #[flowVars['hdfs.path.exists']]" level="INFO" doc:name="Log Path Exists"/>
+        <choice doc:name="Verify Response">
+        	<when expression="#[flowVars['hdfs.path.exists']]">
+                <set-payload value="{&quot;filePath&quot;:#[flowVars['hdfs.file.status'].getPath()],&quot;filePermissions&quot;:#[flowVars['hdfs.file.status'].getPermission()]}" doc:name="Set Payload"/>
+        	</when>
+        	<otherwise>
+                <set-payload value="{&quot;message&quot;:&quot;not found&quot;}" doc:name="Set Not Found Payload"/>
+            </otherwise>
+        </choice>
+        <catch-exception-strategy doc:name="Catch Exception Strategy">
+        	<set-payload value="{&quot;success&quot;: false}" doc:name="Set Error Payload"/>
+        </catch-exception-strategy>
+    </flow>
+    <flow name="SaveFileInfoFlow">
+        <http:listener config-ref="HTTP_Listener_Configuration" path="/save/file" doc:name="HTTP"/>
+        <logger message="Entering Save File: #[message.inboundProperties['http.query.params']['info']]" level="INFO" doc:name="Log Flow Start"/>
+        <set-payload value="#[message.inboundProperties['http.query.params']['info']]" doc:name="Set Input Payload"/>
+        <hdfs:write config-ref="HDFS__Configuration" path="#[message.inboundProperties['http.query.params']['info']]" ownerGroupName="supergroup" ownerUserName="manasses" overwrite="false" doc:name="Write to Path"/>
+        <set-payload value="#[payload]" doc:name="Set Payload"/>
+        <set-session-variable variableName="path" value="#[message.inboundProperties['http.query.params']['info']]" doc:name="Session Variable"/>
+        <catch-exception-strategy doc:name="Catch Exception Strategy">
+            <set-payload value="{&quot;success&quot;: false}" doc:name="Set Error Payload"/>
+        </catch-exception-strategy>
+    </flow>
+    <flow name="ListStatusFlow">
+        <http:listener config-ref="HTTP_Listener_Configuration" path="/list" doc:name="HTTP"/>
+        <logger message="Entering List Status: #[message.inboundProperties['http.query.params']['info']]" level="INFO" doc:name="Log Flow Start"/>
+        <hdfs:list-status config-ref="HDFS__Configuration" path="#[message.inboundProperties['http.query.params']['info']]" doc:name="HDFS"/>
+        <logger message="#[payload]" level="INFO" doc:name="Log Status"/>
+        <set-payload value="#[payload]" doc:name="Set Payload"/>
+        <catch-exception-strategy doc:name="Catch Exception Strategy">
+        	<set-payload value="{&quot;success&quot;: false}" doc:name="Set Error Payload"/>
+        </catch-exception-strategy>
+    </flow>
+    <flow name="ReadFromPathFlow" initialState="stopped">
+        <hdfs:read config-ref="HDFS__Configuration" path="#[sessionVars['path']]" pollingPeriod="50000" doc:name="HDFS (Streaming)"/>
+        <logger message="Log Path: #[payload]" level="INFO" doc:name="Log Path"/>
+    </flow>
+</mule>
