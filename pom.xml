@@ -15,7 +15,7 @@
 		<mule.version>3.7.1</mule.version>
     	<mule.tools.version>1.1</mule.tools.version>
     	<mule.munit.support.version>3.7.0</mule.munit.support.version>
-    	<munit.version>3.7.0-RC2</munit.version>
+    	<munit.version>1.1.0</munit.version>
 	</properties>
 
 	<build>
